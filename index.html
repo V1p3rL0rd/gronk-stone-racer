@@ -95,6 +95,43 @@
     }
     .ctrl-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #3a210c; }
     @media (hover: hover) and (pointer: fine) { .touch-controls { visibility: hidden; } }
+    .touch-only { display: none; }
+    @media (pointer: coarse) { .touch-only { display: inline; } .kbd-only { display: none; } }
+    /* Низкий экран (телефон горизонтально): компактная карточка, кнопка всегда видна */
+    @media (max-height: 520px) {
+        #overlay { padding: 10px; }
+        .card { padding: 12px 18px 0; border-width: 4px; border-radius: 20px; max-width: 560px; max-height: calc(100vh - 20px); }
+        .badge { display: none; }
+        .card h1 { font-size: 22px; margin-bottom: 4px; }
+        .subtitle { margin: 0 0 6px; font-size: 12px; }
+        .card p { font-size: 13px; margin-bottom: 8px; line-height: 1.35; }
+        #board { margin: 0 0 8px; }
+        #board td { padding: 1px 4px; }
+        .btn-play { font-size: 18px; padding: 8px 28px; }
+        #start-btn { position: sticky; bottom: 0; margin-bottom: 10px; }
+        .hud { padding: 8px 12px; font-size: 17px; }
+        .icon-btn { width: 38px; height: 38px; font-size: 17px; }
+        .touch-controls { padding: 10px 16px; }
+        #powers { top: 62px; }
+    }
+    /* Подсказка «поверни телефон» */
+    #rotate-hint {
+        position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+        padding: 20px; background: radial-gradient(circle, rgba(30,15,5,.82) 0%, rgba(20,10,3,.95) 100%);
+    }
+    #rotate-hint .card { max-width: 340px; }
+    #rotate-hint h2 { color: #ff6a00; font-size: 26px; margin-bottom: 10px; text-shadow: 2px 3px 0 #3a210c; }
+    .phone {
+        width: 46px; height: 80px; margin: 6px auto 22px; border: 5px solid #3a210c; border-radius: 10px;
+        background: linear-gradient(180deg, #7ec8e3 0%, #7ec8e3 55%, #e0b672 55%); position: relative;
+        animation: rotate-phone 2.4s ease-in-out infinite;
+    }
+    .phone::after { content: ''; position: absolute; bottom: 4px; left: 50%; width: 10px; height: 4px; margin-left: -5px; border-radius: 2px; background: #3a210c; }
+    @keyframes rotate-phone { 0%, 20% { transform: rotate(0deg); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+    .btn-ghost {
+        background: none; border: 3px solid #3a210c; border-radius: 14px; padding: 8px 18px; margin-top: 4px;
+        font-size: 14px; font-weight: 800; color: #3a210c; cursor: pointer;
+    }
 </style>
 </head>
 <body>
@@ -137,12 +174,22 @@
         <div class="subtitle" id="modal-sub">Каменный гонщик</div>
         <p id="modal-desc">
             Пещерный Гронк удирает на каменном хот-роде через три мира: долину, джунгли и вулканы!<br><br>
-            📱 Свайпы или кнопки внизу<br>
-            💻 ← → / A D — полосы, ↑ / W / Пробел — прыжок,<br>↓ / S (держать) — пригнуться, P — пауза<br><br>
+            <span class="touch-only">📱 ◀ ▶ — полосы, ▲ — прыжок, ▼ (держать) — пригнуться. Или свайпы!<br><br></span>
+            <span class="kbd-only">💻 ← → / A D — полосы, ↑ / W / Пробел — прыжок,<br>↓ / S (держать) — пригнуться, P — пауза<br><br></span>
             🍖 мясо · 🥚 яйцо-щит · 🧲 магнит
         </p>
         <div id="board"></div>
         <button class="btn-play" id="start-btn">ПОГНАЛИ!</button>
+    </div>
+</div>
+
+<div id="rotate-hint">
+    <div class="card">
+        <div class="phone"></div>
+        <h2>ПОВЕРНИ ТЕЛЕФОН</h2>
+        <p>Гронку нужен простор! Горизонтально играть намного удобнее: кнопки крупнее и до них легко дотянуться.<br><br>
+           🔄 Экран не поворачивается? Включи <b>автоповорот</b> в шторке быстрых настроек.</p>
+        <button class="btn-ghost" id="rotate-skip">Всё равно играть вертикально</button>
     </div>
 </div>
 
@@ -1323,7 +1370,7 @@ function showOverlay(title, html, btn, sub = '', boardHl = null) {
     if (boardHl !== null) boardEl.innerHTML = boardHtml(boardHl);
     overlay.style.display = 'flex';
 }
-startBtn.addEventListener('click', () => (S.mode === 'paused' ? resumeGame() : startGame()));
+startBtn.addEventListener('click', () => { lockLandscape(); S.mode === 'paused' ? resumeGame() : startGame(); });
 
 function startGame() {
     sound.init();
@@ -1605,6 +1652,39 @@ function animate(now) {
     updParts(dt, ws);
     updateCamera(dt);
     renderer.render(scene, camera);
+}
+
+// ---- Подсказка про горизонтальный режим на телефонах ----
+const rotateHint = $('rotate-hint');
+const mqPortrait = window.matchMedia('(orientation: portrait)');
+const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+let rotateSkipped = false;
+try { rotateSkipped = sessionStorage.getItem('gronk-rotate-skip') === '1'; } catch (e) { /* sessionStorage недоступен */ }
+function updateRotateHint() {
+    const portrait = IS_TOUCH && mqPortrait.matches;
+    const show = portrait && !rotateSkipped;
+    rotateHint.style.display = show ? 'flex' : 'none';
+    if (show && S.mode === 'play') pauseGame(); // перевернули телефон посреди забега
+}
+$('rotate-skip').addEventListener('click', () => {
+    rotateSkipped = true;
+    try { sessionStorage.setItem('gronk-rotate-skip', '1'); } catch (e) { /* ignore */ }
+    updateRotateHint();
+});
+if (mqPortrait.addEventListener) mqPortrait.addEventListener('change', updateRotateHint);
+else if (mqPortrait.addListener) mqPortrait.addListener(updateRotateHint); // старый Safari
+window.addEventListener('resize', updateRotateHint);
+updateRotateHint();
+
+// Android: в горизонтальном режиме уходим в полноэкранный режим и фиксируем ориентацию,
+// чтобы случайный наклон телефона не переворачивал экран. iOS это API не поддерживает — тихо пропускаем.
+function lockLandscape() {
+    if (!IS_TOUCH || mqPortrait.matches || document.fullscreenElement) return;
+    const el = document.documentElement;
+    if (!el.requestFullscreen) return;
+    el.requestFullscreen({ navigationUI: 'hide' })
+        .then(() => (screen.orientation && screen.orientation.lock ? screen.orientation.lock('landscape') : null))
+        .catch(() => { /* не поддерживается или отклонено — играем как есть */ });
 }
 
 resetDecor();
